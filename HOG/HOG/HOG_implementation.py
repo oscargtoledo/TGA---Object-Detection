@@ -3,7 +3,7 @@ import numpy
 import matplotlib.pyplot
 import HOG
 
-img = skimage.io.imread("im_patch.jpg")
+img = skimage.io.imread("fotofamilia.jpg")
 img = skimage.color.rgb2gray(img)
 
 horizontal_mask = numpy.array([-1, 0, 1])
