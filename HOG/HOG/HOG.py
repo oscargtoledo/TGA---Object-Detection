@@ -12,8 +12,7 @@ def calculate_gradient(img, template):
     result = numpy.zeros((new_img.shape))
     
     for r in numpy.uint16(numpy.arange((ts-1)/2.0, img.shape[0]+(ts-1)/2.0)):
-        for c in numpy.uint16(numpy.arange((ts-1)/2.0, 
-                              img.shape[1]+(ts-1)/2.0)):
+        for c in numpy.uint16(numpy.arange((ts-1)/2.0, img.shape[1]+(ts-1)/2.0)):
             curr_region = new_img[r-numpy.uint16((ts-1)/2.0):r+numpy.uint16((ts-1)/2.0)+1, 
                                   c-numpy.uint16((ts-1)/2.0):c+numpy.uint16((ts-1)/2.0)+1]
             curr_result = curr_region * template
