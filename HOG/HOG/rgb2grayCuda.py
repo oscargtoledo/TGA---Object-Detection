@@ -72,9 +72,31 @@ module = SourceModule("""
       out[ind] = csrgb;
       out[ind+1] = csrgb;
       out[ind+2] = csrgb;
+    }
 
-            
+    __global__ void calculate_gradient(float* imageIn, float* imageOut, int Ncol, int Nrow, int Ncar, bool templateType )
+    {
+      int ts = 3;
+
+      int row = 0; //calcular una row entre [(ts-1)/2.0 , NRow + (ts-1)/2.0 )
+      int col = 0; //calcular una col entre [(ts-1)/2.0 , NCol + (ts-1)/2.0 )
+      float currentRegion[3][3];  //extreure tall de la imatge, amb les rows:
+                                  //r-(ts-1)/2.0 : r+(ts-1)/2.0
+                                  //i columnes:
+                                  //c-(ts-1)/2.0 : c+(ts-1)/2.0
+      float template[3] = {-1,0,1}
+      float regionResults[3][3];
+      if(templateType) //template vertical
+      {
+        //interpretar template com una matriu [3][1] i multiplicar contra  current region
+        //regionResult[3][3] = currentRegion * template;
         
+      } else { //template horitzontal
+        //interpretar template com una matriu [1][3] i multiplicar contra  current region
+        //regionResult[3][3] = currentRegion * template;
+      }
+      //float sum = suma de tots els elements de regionResults
+      //imageOut[row][col] = sum
     }
   }
 
