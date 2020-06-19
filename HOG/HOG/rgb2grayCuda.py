@@ -55,24 +55,29 @@ __global__ void doublify(float *in, float *out, int Ncol, int Nrow)
     }
 
   }
-  __global__ void imageCopy(float *in, float *out, int Ncol, int Nrow, int Ncar){
+  __global__ void calculate_gradient(float *in, float *out, int Ncol, int Nrow, int Ncar, bool templateType){
     
       int col = blockIdx.x * blockDim.x + threadIdx.x;
       int fil = blockIdx.y * blockDim.y + threadIdx.y;
       int car = blockIdx.z * blockDim.z + threadIdx.z;
       int ind = Ncar * (fil*Ncol + col);
       if (fil < Nrow && col < Ncol){
-        for(int i = 0; i<3; i++){
-          
-          out[ind+i] = in[ind+i];
-        }
+        // Si es la primera o ultima fila, o la primera o ultima columna, no calculem gradient perque es el marge
+        if (fil == 1 || fil == Nrow-1 || col == 1 || col == Ncol-1){
+          out[ind+0] = 1.0f;
+          out[ind+1] = 0.0f;
+          out[ind+2] = 0.0f;
+        } else {
+          // Si no, calculem gradient
+          for(int i = 0; i<3; i++){
+              out[ind+i] = in[ind+i];
+          }
+        }  
       }
-    
-    
   }
 """)
 
-e = """__global__ void calculate_gradient(float* imageIn, float* imageOut, int Ncol, int Nrow, int Ncar, bool templateType )
+esquema = """__global__ void calculate_gradient(float* imageIn, float* imageOut, int Ncol, int Nrow, int Ncar, bool templateType )
     {
       int ts = 3;
 
@@ -157,8 +162,8 @@ d_imageOut = cuda.mem_alloc(preparedImage.nbytes)
 cuda.memcpy_htod(d_imageIn,preparedImage)
 cuda.memcpy_htod(d_imageOut,np.empty_like(preparedImage))
 
-HOGFunc = HOGModule.get_function("imageCopy")
-HOGFunc(d_imageIn,d_imageOut,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar),block=dimBlock,grid=gridDim)
+HOGFunc = HOGModule.get_function("calculate_gradient")
+HOGFunc(d_imageIn,d_imageOut,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar), False ,block=dimBlock,grid=gridDim)
 
 h_image = np.empty_like(preparedImage)
 cuda.memcpy_dtoh(h_image,d_imageOut)
