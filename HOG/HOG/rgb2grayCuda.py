@@ -88,18 +88,18 @@ __global__ void doublify(float *in, float *out, int Ncol, int Nrow)
               out[ind+i] = sum;
             }
           } else {
+            sum += in[Ncar * ((fil-1)*Ncol + col)] * -1;
+            sum += in[Ncar * ((fil)*Ncol + col)] * 0;
+            sum += in[Ncar * ((fil+1)*Ncol + col)] * 1;
+
             for(int i = 0; i<3; i++){
-             out[ind+i] = in[ind+i];
+              out[ind+i] = sum;
+            }
+
+            //for(int i = 0; i<3; i++){
+            //  out[ind+i] = in[ind+i];
+            //}
           }
-          }
-          
-
-
-          
-
-
-
-
         }  
       }
   }
@@ -191,7 +191,7 @@ cuda.memcpy_htod(d_imageIn,preparedImage)
 cuda.memcpy_htod(d_imageOut,np.empty_like(preparedImage))
 
 HOGFunc = HOGModule.get_function("calculate_gradient")
-HOGFunc(d_imageIn,d_imageOut,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar), np.int32(1) ,block=dimBlock,grid=gridDim)
+HOGFunc(d_imageIn,d_imageOut,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar), np.int32(0) ,block=dimBlock,grid=gridDim)
 
 h_image = np.empty_like(preparedImage)
 cuda.memcpy_dtoh(h_image,d_imageOut)
