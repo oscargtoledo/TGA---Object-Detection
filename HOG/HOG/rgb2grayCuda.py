@@ -68,18 +68,15 @@ __global__ void doublify(float *in, float *out, int Ncol, int Nrow)
           out[ind+1] = 0.0f;
           out[ind+2] = 0.0f;
           return;
-        } else if (fil>1 || col >1){
+        } else { //if (fil>1 && fil<Nrow-1 || col >1){
           // Si no, calculem gradient
 
           // templateType == True -> horitzontal , False -> vertical
-          // Per al pixel a la posicio (fil,col)
 
-          float sum = 0;
-          //for(int i = -1; i<=1; i++){
-              //out[ind+i] = in[ind+i];
-              //sum += in[ind+i*Ncar] * i;
-          //}
-          if(templateType){
+          
+
+          if(templateType && col > 1 && col < Ncol-1){
+            float sum = 0;
             sum += in[Ncar * ((fil)*Ncol + col-1)] * -1;
             sum += in[Ncar * ((fil)*Ncol + col)] * 0;
             sum += in[Ncar * ((fil)*Ncol + col+1)] * 1;
@@ -87,10 +84,11 @@ __global__ void doublify(float *in, float *out, int Ncol, int Nrow)
             for(int i = 0; i<3; i++){
               out[ind+i] = sum;
             }
-          } else {
-            sum += in[Ncar * ((fil-1)*Ncol + col)] * -1;
-            sum += in[Ncar * ((fil)*Ncol + col)] * 0;
-            sum += in[Ncar * ((fil+1)*Ncol + col)] * 1;
+          } else if (!templateType && fil > 1 && fil < Nrow-1){
+            float sum = 0;
+            sum += in[Ncar * ((fil-1)*Ncol  + col) ] * -1;
+            sum += in[Ncar * ((fil)*Ncol    + col)   ] * 0;
+            sum += in[Ncar * ((fil+1)*Ncol  + col) ] * 1;
 
             for(int i = 0; i<3; i++){
               out[ind+i] = sum;
