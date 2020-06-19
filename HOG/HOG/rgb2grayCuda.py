@@ -67,11 +67,39 @@ __global__ void doublify(float *in, float *out, int Ncol, int Nrow)
           out[ind+0] = 1.0f;
           out[ind+1] = 0.0f;
           out[ind+2] = 0.0f;
-        } else {
+          return;
+        } else if (fil>1 || col >1){
           // Si no, calculem gradient
-          for(int i = 0; i<3; i++){
-              out[ind+i] = in[ind+i];
+
+          // templateType == True -> horitzontal , False -> vertical
+          // Per al pixel a la posicio (fil,col)
+
+          float sum = 0;
+          //for(int i = -1; i<=1; i++){
+              //out[ind+i] = in[ind+i];
+              //sum += in[ind+i*Ncar] * i;
+          //}
+          if(templateType){
+            sum += in[Ncar * ((fil)*Ncol + col-1)] * -1;
+            sum += in[Ncar * ((fil)*Ncol + col)] * 0;
+            sum += in[Ncar * ((fil)*Ncol + col+1)] * 1;
+
+            for(int i = 0; i<3; i++){
+              out[ind+i] = sum;
+            }
+          } else {
+            for(int i = 0; i<3; i++){
+             out[ind+i] = in[ind+i];
           }
+          }
+          
+
+
+          
+
+
+
+
         }  
       }
   }
@@ -163,7 +191,7 @@ cuda.memcpy_htod(d_imageIn,preparedImage)
 cuda.memcpy_htod(d_imageOut,np.empty_like(preparedImage))
 
 HOGFunc = HOGModule.get_function("calculate_gradient")
-HOGFunc(d_imageIn,d_imageOut,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar), False ,block=dimBlock,grid=gridDim)
+HOGFunc(d_imageIn,d_imageOut,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar), np.int32(1) ,block=dimBlock,grid=gridDim)
 
 h_image = np.empty_like(preparedImage)
 cuda.memcpy_dtoh(h_image,d_imageOut)
