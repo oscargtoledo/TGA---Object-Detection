@@ -5,7 +5,8 @@ import numpy as np
 import skimage.io, skimage.color
 import matplotlib.pyplot as plt
 import math
-
+import time
+import sys
 
 image = skimage.io.imread("fotofamilia - Copy.bmp")
 # image = skimage.color.rgb2gray(image)
@@ -18,41 +19,20 @@ print(image.shape)
 
 
 
-d_imageIn = cuda.mem_alloc(image.nbytes)
-d_imageOut = cuda.mem_alloc(image.nbytes)
-cuda.memcpy_htod(d_imageIn,image)
-cuda.memcpy_htod(d_imageOut,np.empty_like(image))
+
 # d_imageOut = np.empty_like(image)
 
 
 
-module = SourceModule("""
-  __global__ void doublify(float *in, float *out, int Ncol, int Nrow)
+
+HOGModule = SourceModule("""
+__global__ void doublify(float *in, float *out, int Ncol, int Nrow)
   {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int fil = blockIdx.y * blockDim.y + threadIdx.y;
     int ind = fil*Ncol + col;
     if (fil < Nrow && col < Ncol)
       out[ind] = in[ind];
-  }
-
-
-  __global__ void imageCopy(float *in, float *out, int Ncol, int Nrow, int Ncar){
-    
-      int col = blockIdx.x * blockDim.x + threadIdx.x;
-      int fil = blockIdx.y * blockDim.y + threadIdx.y;
-      int car = blockIdx.z * blockDim.z + threadIdx.z;
-      //int ind = car * Nrow * Ncol + fil*Ncol + col;
-      //if (fil < Nrow && col < Ncol && car < Ncar && car == 0){
-      int ind = Ncar * (fil*Ncol + col);
-      if (fil < Nrow && col < Ncol){
-        for(int i = 0; i<3; i++){
-          
-          out[ind+i] = in[ind+i];
-        }
-      }
-    
-    
   }
 
   __global__ void rgb2gray(float *in, float *out, int Ncol, int Nrow, int Ncar){
@@ -74,7 +54,25 @@ module = SourceModule("""
       out[ind+2] = csrgb;
     }
 
-    __global__ void calculate_gradient(float* imageIn, float* imageOut, int Ncol, int Nrow, int Ncar, bool templateType )
+  }
+  __global__ void imageCopy(float *in, float *out, int Ncol, int Nrow, int Ncar){
+    
+      int col = blockIdx.x * blockDim.x + threadIdx.x;
+      int fil = blockIdx.y * blockDim.y + threadIdx.y;
+      int car = blockIdx.z * blockDim.z + threadIdx.z;
+      int ind = Ncar * (fil*Ncol + col);
+      if (fil < Nrow && col < Ncol){
+        for(int i = 0; i<3; i++){
+          
+          out[ind+i] = in[ind+i];
+        }
+      }
+    
+    
+  }
+""")
+
+e = """__global__ void calculate_gradient(float* imageIn, float* imageOut, int Ncol, int Nrow, int Ncar, bool templateType )
     {
       int ts = 3;
 
@@ -97,10 +95,7 @@ module = SourceModule("""
       }
       //float sum = suma de tots els elements de regionResults
       //imageOut[row][col] = sum
-    }
-  }
-
-  """)
+    }"""
 
 N = image.shape[0]
 
@@ -122,25 +117,96 @@ gridDim = (nBlocksCol,nBlocksRow,nBlocksCar)
 dimBlock = (nThreads, nThreads, nThreads)
 
 
-func = module.get_function("rgb2gray")
+d_imageIn = cuda.mem_alloc(image.nbytes)
+d_imageOut = cuda.mem_alloc(image.nbytes)
+cuda.memcpy_htod(d_imageIn,image)
+cuda.memcpy_htod(d_imageOut,np.empty_like(image))
+
+
+## Convertir imatge a grayscale ----------------------------------------------------------------------
+func = HOGModule.get_function("rgb2gray")
+start = time.time()
 func(d_imageIn,d_imageOut,np.int32(Ncol),np.int32(Nrow), np.int32(Ncar),block=dimBlock,grid=gridDim)
-# func.prepare("P")
-# func.prepared_call((1,1),(4,4,1),[d_imageIn,d_imageOut])
+end = time.time()
+print("Elapsed Time (RGB to Grayscale Conversion): " + str(end-start))
+
 
 h_image = np.empty_like(image)
 cuda.memcpy_dtoh(h_image,d_imageOut)
-print(h_image)
-print("--------------------------------")
-print(image)
-# print(d_image)
-
-# skimage.io.imsave("e.png",h_image)
 skimage.io.imshow(h_image)
 plt.show()
 
-image = skimage.io.imread("fotofamilia - Copy.bmp")
-image = skimage.color.rgb2gray(image)
-skimage.io.imshow(image)
+## Resaltar arestes imatge ----------------------------------------------------------------------
+
+## La imatge final ha de tenir un pixel extra per cada costat, per tant el tamany incrementa: 
+
+nBlocksCol = int((Ncol+2 + nThreads -1)/nThreads)
+nBlocksRow = int((Nrow+2 + nThreads -1)/nThreads)
+nBlocksCar = int((Ncar + nThreads -1)/nThreads)
+
+
+gridDim = (nBlocksCol,nBlocksRow,nBlocksCar)
+
+preparedImage = np.zeros((Nrow+2,Ncol+2,Ncar), dtype=np.float32)
+y_offset = 1
+x_offset = 1
+preparedImage[y_offset:h_image.shape[0]+y_offset,x_offset:h_image.shape[1]+x_offset] = image
+
+d_imageIn = cuda.mem_alloc(preparedImage.nbytes)
+d_imageOut = cuda.mem_alloc(preparedImage.nbytes)
+cuda.memcpy_htod(d_imageIn,preparedImage)
+cuda.memcpy_htod(d_imageOut,np.empty_like(preparedImage))
+
+HOGFunc = HOGModule.get_function("imageCopy")
+HOGFunc(d_imageIn,d_imageOut,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar),block=dimBlock,grid=gridDim)
+
+h_image = np.empty_like(preparedImage)
+cuda.memcpy_dtoh(h_image,d_imageOut)
+skimage.io.imshow(h_image)
 plt.show()
+
+
+# d_imageIn = cuda.mem_alloc(image.nbytes)
+# # d_imageOut = cuda.mem_alloc(image.nbytes)
+# d_imageOut = cuda.mem_alloc(image.nbytes + 2*image[0].nbytes + 2*image[1].nbytes)
+# # d_imageOut = cuda.mem_alloc(image.nbytes + 2*image.shape[0]*Ncar*sys.getsizeof(float()) + 2*image.shape[1]*Ncar*sys.getsizeof(float()))
+# cuda.memcpy_htod(d_imageIn,image)
+# # cuda.memcpy_htod(d_imageOut,np.empty_like(image))
+# cuda.memcpy_htod(d_imageOut,np.zeros((Nrow+2,Ncol+2,Ncar), dtype=np.float32))
+
+# imgCopy = HOGModule.get_function("imageCopy")
+# imgCopy(d_imageIn,d_imageOut,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar),block=dimBlock,grid=gridDim)
+
+# h_image = np.zeros((Nrow,Ncol,Ncar), dtype=np.float32)
+# cuda.memcpy_dtoh(h_image,d_imageOut)
+# skimage.io.imshow(h_image)
+# plt.show()
+
+
+
+
+
+
+
+
+# d_finalImage = cuda.mem_alloc(image.nbytes + 2*image.shape[0]*Ncar*sys.getsizeof(float()) + 2*image.shape[1]*Ncar*sys.getsizeof(float()))
+# cuda.memcpy_htod(d_imageIn,h_image)
+# print(np.zeros((Nrow+2,Ncol+2,Ncar)))
+# cuda.memcpy_htod(d_finalImage,np.zeros((Nrow+2,Ncol+2,Ncar), dtype=np.float32))
+# imgCopy(d_imageIn,d_finalImage,np.int32(Ncol),np.int32(Nrow), np.int32(Ncar),block=dimBlock,grid=gridDim)
+
+# h_result = np.zeros((Nrow+2,Ncol+2,Ncar), dtype=np.float32)
+# cuda.memcpy_dtoh(h_result, d_imageOut)
+# skimage.io.imshow(h_result)
+# plt.show()
+
+
+
+
+
+# image = skimage.io.imread("fotofamilia - Copy.bmp")
+# image = skimage.color.rgb2gray(image)
+# skimage.io.imshow(image)
+# plt.show()
 
 

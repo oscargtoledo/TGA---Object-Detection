@@ -16,6 +16,8 @@ def calculate_gradient(img, template):
             curr_region = new_img[r-numpy.uint16((ts-1)/2.0):r+numpy.uint16((ts-1)/2.0)+1, 
                                   c-numpy.uint16((ts-1)/2.0):c+numpy.uint16((ts-1)/2.0)+1]
             # print(curr_region.shape)
+            print("Pixel at row: " + str(r)+ " , col: " + str(c))
+            print(curr_region)
             curr_result = curr_region * template
             score = numpy.sum(curr_result)
             result[r, c] = score
