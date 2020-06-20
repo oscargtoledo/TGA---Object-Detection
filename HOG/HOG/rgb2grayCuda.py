@@ -9,10 +9,12 @@ import time
 import sys
 
 image = skimage.io.imread("fotofamilia - Copy.bmp")
-# image = skimage.color.rgb2gray(image)
+
 image = skimage.img_as_float32(image)
 
 image = np.array(image)
+
+
 # image = image.astype(np.float32)
 
 print(image.shape)
@@ -40,7 +42,6 @@ __global__ void doublify(float *in, float *out, int Ncol, int Nrow)
     int fil = blockIdx.y * blockDim.y + threadIdx.y;
     int ind = Ncar *(fil*Ncol + col);
     if (fil < Nrow && col < Ncol){
-
       float clinear = 0.2126 * in[ind] + 0.7152 * in[ind+1] + 0.0722 * in[ind+2];
       float csrgb = 0.0;
       if(clinear<=0.0031308){
@@ -101,32 +102,101 @@ __global__ void doublify(float *in, float *out, int Ncol, int Nrow)
         }  
       }
   }
+
+
+  __global__ void gradient_direction(float* hGrad, float* vGrad,float* out, int Ncol, int Nrow, int Ncar)
+  {
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int fil = blockIdx.y * blockDim.y + threadIdx.y;
+    int ind = Ncar *(fil*Ncol + col);
+    if (fil < Nrow && col < Ncol){
+      if (fil != 1 && fil != Nrow-1 && col != 1 && col != Ncol-1){
+        float gradDir = 0.0f;
+        gradDir = atan(vGrad[ind]/(hGrad[ind]+0.00000001));
+        float pi = 3.14159265359f;
+        gradDir = gradDir * (180.0f / pi);
+        gradDir = fmod(gradDir,180.0f);
+        for(int i = 0; i<3; i++){
+          out[ind+i] = gradDir;
+        }
+      }
+      
+    }
+  }
+
+  __global__ void gradient_magnitude(float* hGrad, float* vGrad,float* out, int Ncol, int Nrow, int Ncar)
+  {
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int fil = blockIdx.y * blockDim.y + threadIdx.y;
+    int ind = Ncar *(fil*Ncol + col);
+    if (fil < Nrow && col < Ncol){
+      if (fil != 1 && fil != Nrow-1 && col != 1 && col != Ncol-1){
+        float gradMag = 0.0f;
+        float hGradSq = pow(hGrad[ind],2);
+        float vGradSq = pow(vGrad[ind],2);
+        float sumSquares = hGradSq + vGradSq;
+        gradMag = sqrt(sumSquares);
+        for(int i = 0; i<3; i++){
+          out[ind+i] = gradMag;
+        }
+      }
+    }
+    
+  }
+
+  __global__ void histogram(float* dir, float* mag, float* hist,int Ncol, int Nrow, int Ncar)
+  {
+    __shared__ float privateHistogram[8];
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int fil = blockIdx.y * blockDim.y + threadIdx.y;
+    int ind = Ncar *(fil*Ncol + col);
+    if (fil < Nrow && col < Ncol){
+      if (fil != 1 && fil != Nrow-1 && col != 1 && col != Ncol-1){
+        
+        int workThread = threadIdx.x + blockDim.x * threadIdx.y;
+        //printf("%f \\n", ind);
+        //printf("%f %f -> %f\\n",threadIdx.x, threadIdx.y, workThread);
+        //if(workThread <= 8)
+        //  privateHistogram[workThread] = 0;
+        //__syncthreads();
+
+        float fMag = mag[ind];
+        float fDir = abs(dir[ind]);
+        
+        
+        // Si te part decimal, esta entre dos caselles d'histograma
+        if( abs(fDir/20-int(fDir/20))>0 )
+        {
+          
+          //atomicAdd(&privateHistogram[int(floor(fDir/20))],fMag);
+          //atomicAdd(&privateHistogram[int(ceil(fDir/20))],fMag);
+
+          atomicAdd(&hist[workThread],int(floor(fDir/20)));
+          atomicAdd(&hist[workThread],int(ceil(fDir/20)));
+        } else {
+          //atomicAdd(&privateHistogram[int(fDir/20)],fMag);
+
+          atomicAdd(&hist[workThread],int(fDir/20));
+        }
+        return;
+        __syncthreads();
+
+        
+       
+        //printf("%f %f %f %f %f %f %f %f %f \\n", privateHistogram[0],privateHistogram[1],privateHistogram[2],privateHistogram[3],privateHistogram[4],privateHistogram[5],privateHistogram[6],privateHistogram[7],privateHistogram[8]);
+
+        if(workThread <= 8)
+        {
+          atomicAdd(&hist[workThread],privateHistogram[workThread]);
+          //printf("Adding %f to bracket %f\\n",privateHistogram[workThread],workThread);
+        }
+
+
+      }
+    }
+  }
 """)
 
-esquema = """__global__ void calculate_gradient(float* imageIn, float* imageOut, int Ncol, int Nrow, int Ncar, bool templateType )
-    {
-      int ts = 3;
-
-      int row = 0; //calcular una row entre [(ts-1)/2.0 , NRow + (ts-1)/2.0 )
-      int col = 0; //calcular una col entre [(ts-1)/2.0 , NCol + (ts-1)/2.0 )
-      float currentRegion[3][3];  //extreure tall de la imatge, amb les rows:
-                                  //r-(ts-1)/2.0 : r+(ts-1)/2.0
-                                  //i columnes:
-                                  //c-(ts-1)/2.0 : c+(ts-1)/2.0
-      float template[3] = {-1,0,1}
-      float regionResults[3][3];
-      if(templateType) //template vertical
-      {
-        //interpretar template com una matriu [3][1] i multiplicar contra  current region
-        //regionResult[3][3] = currentRegion * template;
-        
-      } else { //template horitzontal
-        //interpretar template com una matriu [1][3] i multiplicar contra  current region
-        //regionResult[3][3] = currentRegion * template;
-      }
-      //float sum = suma de tots els elements de regionResults
-      //imageOut[row][col] = sum
-    }"""
 
 N = image.shape[0]
 
@@ -134,7 +204,7 @@ Nrow, Ncol, Ncar = image.shape
 # THREADS = 16
 
 
-nThreads = 8
+nThreads = 32
 # Ncol = 720
 # Nrow = 122
 # Ncar = 1
@@ -145,7 +215,8 @@ nBlocksCar = int((Ncar + nThreads -1)/nThreads)
 
 gridDim = (nBlocksCol,nBlocksRow,nBlocksCar)
 # gridDim = (1,1,1)
-dimBlock = (nThreads, nThreads, nThreads)
+dimBlock = (nThreads, nThreads, 1)
+
 
 
 d_imageIn = cuda.mem_alloc(image.nbytes)
@@ -164,8 +235,9 @@ print("Elapsed Time (RGB to Grayscale Conversion): " + str(end-start))
 
 h_image = np.empty_like(image)
 cuda.memcpy_dtoh(h_image,d_imageOut)
-skimage.io.imshow(h_image)
-plt.show()
+# skimage.io.imshow(h_image, cmap=plt.cm.gray)
+# plt.show()
+
 
 ## Resaltar arestes imatge ----------------------------------------------------------------------
 
@@ -181,20 +253,92 @@ gridDim = (nBlocksCol,nBlocksRow,nBlocksCar)
 preparedImage = np.zeros((Nrow+2,Ncol+2,Ncar), dtype=np.float32)
 y_offset = 1
 x_offset = 1
-preparedImage[y_offset:h_image.shape[0]+y_offset,x_offset:h_image.shape[1]+x_offset] = image
+preparedImage[y_offset:h_image.shape[0]+y_offset,x_offset:h_image.shape[1]+x_offset] = h_image
 
 d_imageIn = cuda.mem_alloc(preparedImage.nbytes)
-d_imageOut = cuda.mem_alloc(preparedImage.nbytes)
+d_vGradient = cuda.mem_alloc(preparedImage.nbytes)
+d_hGradient = cuda.mem_alloc(preparedImage.nbytes)
+
 cuda.memcpy_htod(d_imageIn,preparedImage)
-cuda.memcpy_htod(d_imageOut,np.empty_like(preparedImage))
+cuda.memcpy_htod(d_vGradient,np.empty_like(preparedImage))
+cuda.memcpy_htod(d_hGradient,np.empty_like(preparedImage))
 
 HOGFunc = HOGModule.get_function("calculate_gradient")
-HOGFunc(d_imageIn,d_imageOut,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar), np.int32(0) ,block=dimBlock,grid=gridDim)
+HOGFunc(d_imageIn,d_vGradient,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar), np.int32(0) ,block=dimBlock,grid=gridDim)
+HOGFunc(d_imageIn,d_hGradient,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar), np.int32(1) ,block=dimBlock,grid=gridDim)
 
-h_image = np.empty_like(preparedImage)
-cuda.memcpy_dtoh(h_image,d_imageOut)
-skimage.io.imshow(h_image)
+h_vGradient = np.empty_like(preparedImage)
+h_hGradient = np.empty_like(preparedImage)
+cuda.memcpy_dtoh(h_vGradient,d_vGradient)
+cuda.memcpy_dtoh(h_hGradient,d_hGradient)
+# skimage.io.imshow(h_vGradient, cmap=plt.cm.gray)
+# plt.show()
+# skimage.io.imshow(h_hGradient, cmap=plt.cm.gray)
+# plt.show()
+## Generar imatges amb magnitud i direcció de gradient ----------------------------------------
+
+d_gradMag = cuda.mem_alloc(preparedImage.nbytes)
+d_gradDir = cuda.mem_alloc(preparedImage.nbytes)
+cuda.memcpy_htod(d_gradMag,np.empty_like(preparedImage))
+cuda.memcpy_htod(d_gradDir,np.empty_like(preparedImage))
+
+HOGgradDir = HOGModule.get_function("gradient_direction")
+HOGmagDir = HOGModule.get_function("gradient_magnitude")
+
+HOGgradDir(d_hGradient,d_vGradient,d_gradDir,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar), block=dimBlock,grid=gridDim)
+HOGmagDir(d_hGradient,d_vGradient,d_gradMag,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar), block=dimBlock,grid=gridDim)
+
+h_gradMag = np.empty_like(preparedImage)
+h_gradDir = np.empty_like(preparedImage)
+cuda.memcpy_dtoh(h_gradMag,d_gradMag)
+cuda.memcpy_dtoh(h_gradDir,d_gradDir)
+
+
+# skimage.io.imshow(h_gradDir)
+# plt.show()
+# skimage.io.imshow(h_gradMag, cmap=plt.cm.gray)
+# plt.show()
+
+## Generar histograma -------------------------------------------------
+histogram = np.zeros(9)
+d_histogram = cuda.mem_alloc(histogram.nbytes)
+
+HOGHisto = HOGModule.get_function("histogram")
+
+HOGHisto(d_gradDir,d_gradMag,d_histogram,np.int32(Ncol+2),np.int32(Nrow+2), np.int32(Ncar), block=dimBlock,grid=gridDim)
+
+
+h_histogram = np.empty_like(histogram)
+cuda.memcpy_dtoh(h_histogram,d_histogram)
+print(h_histogram)
+plt.bar(x=np.arange(9),height=h_histogram)
+
 plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # d_imageIn = cuda.mem_alloc(image.nbytes)
@@ -239,5 +383,6 @@ plt.show()
 # image = skimage.color.rgb2gray(image)
 # skimage.io.imshow(image)
 # plt.show()
+
 
 
