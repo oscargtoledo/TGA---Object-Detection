@@ -158,12 +158,13 @@ if __name__ == '__main__':
 
   h_histogram = (h_histogram - np.min(h_histogram))/np.ptp(h_histogram).astype(float)
 
-  for h in h_histogram:
+  if showImages:
+    for h in h_histogram:
 
-    plt.bar(x=np.arange(9),height=h)
-    plt.ylim((0,1))
+      plt.bar(x=np.arange(9),height=h)
+      plt.ylim((0,1))
 
-    plt.show()
+      plt.show()
 
 
 
