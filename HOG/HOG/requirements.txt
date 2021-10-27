@@ -6,7 +6,7 @@ colorama==0.4.3
 cupy==6.0.0
 cycler==0.10.0
 cytoolz==0.10.1
-dask==2.16.0
+dask==2021.10.0
 decorator==4.4.2
 fastrlock==0.4
 imageio==2.8.0
